@@ -1,5 +1,9 @@
 Flask
 flask-cors
-opencv-python
+opencv-python-headless  # Replaces opencv-python to avoid GUI dependencies
 numpy
 ultralytics
+gunicorn  # Required to serve the app on Azure
+libgl1  # Required for OpenCV
+libglib2.0-0  # Additional dependency for OpenCV compatibility
+
