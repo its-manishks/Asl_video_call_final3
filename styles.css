@@ -295,6 +295,37 @@ input {
 .chat-message {
   margin-bottom: 8px;
 }
+/* Custom styles for the language dropdown */
+.language-select {
+  background: linear-gradient(45deg, #f3ec78, #af4261);
+  border: none;
+  color: rgb(248, 248, 248);
+  font-size: 16px;
+  padding: 8px 12px;
+  border-radius: 5px;
+  box-shadow: 0px 4px 8px rgb(104, 212, 3);
+  outline: none;
+  cursor: pointer;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url('data:image/svg+xml;utf8,<svg fill="white" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>');
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 16px;
+}
+
+/* Style the drop-down options */
+.language-select option {
+  background-color: #040404; /* Use a matching dark color */
+  color: white;              /* White text for contrast */
+}
+
+.language-select:hover {
+  opacity: 0.9;
+  transform: scale(1.02);
+}
 
 
 

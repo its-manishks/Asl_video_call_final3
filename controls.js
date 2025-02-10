@@ -4,7 +4,6 @@
 var recognition;
 var isRecognizing = false;
 
-// Initialize SpeechRecognition if available.
 if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   recognition = new SpeechRecognition();
@@ -18,16 +17,13 @@ if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
         transcript += event.results[i][0].transcript;
       }
     }
-    // Append the recognized transcript to the chat input.
     let chatInput = document.getElementById("chatInput");
     if (chatInput) {
-      // You can choose to append a space then the new transcript.
       chatInput.value += transcript;
     }
   };
   recognition.onerror = function (event) {
-    console.error("Speech recognition error: ", event.error);
-    // Reset the toggle on error.
+    console.error("Speech recognition error:", event.error);
     isRecognizing = false;
     let voiceBtn = document.getElementById("voiceChatButton");
     if (voiceBtn) {
@@ -38,14 +34,33 @@ if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
 
 function initializeControls() {
   const controlsDiv = document.getElementById("controls");
+  // Updated language dropdown with additional languages and a custom styling class.
   controlsDiv.innerHTML = `
     <button id="muteButton" class="btn-mute">Mute</button>
     <button id="cameraButton" class="btn-camera">Camera Off</button>
     <button id="signDetectButton" class="btn-sign">Sign Detect On</button>
     <button id="leaveCallButton" class="btn-leave">Leave Call</button>
     <button id="chatButton" class="btn-chat">Chat</button>
-    <!-- Front text box for gesture input & speech conversion -->
+    <!-- Text box for message input or ASL letters -->
     <input type="text" id="messageBox" placeholder="Message / ASL Letters" style="width:200px; margin-left:10px;">
+    <!-- Updated language dropdown for translation/TTS with custom class "language-select" -->
+    <select id="translationLanguage" class="language-select" style="margin-left:10px;">
+      <option value="hi">Hindi</option>
+      <option value="ta">Tamil</option>
+      <option value="te">Telugu</option>
+      <option value="bn">Bengali</option>
+      <option value="en">English</option>
+      <option value="fr">French</option>
+      <option value="es">Spanish</option>
+      <option value="de">German</option>
+      <option value="zh-cn">Chinese</option>
+      <option value="ko">Korean</option>
+      <option value="ja">Japanese</option>
+      <option value="kn">Kannada</option>
+      <option value="mr">Marathi</option>
+      <option value="pa">Punjabi</option>
+
+    </select>
     <button id="speechButton" class="btn-speech">Speak</button>
     <button id="clearButton" class="btn-clear">Clear</button>
   `;
@@ -58,7 +73,7 @@ function initializeControls() {
   document.getElementById("clearButton").addEventListener("click", clearMessage);
   document.getElementById("chatButton").addEventListener("click", toggleChatBox);
 
-  // Create the chat box if not already present.
+  // Create the chat box if it doesn't exist.
   if (!document.getElementById("chatBox")) {
     createChatBox();
   }
@@ -86,7 +101,6 @@ function toggleSignDetection() {
   if (detectASL) {
     processASL();
   } else {
-    // Remove the canvas overlay if sign detection is turned off.
     const localWrapper = document.querySelector('.video-wrapper[data-id="local"]');
     if (localWrapper) {
       const canvas = localWrapper.querySelector("#aslCanvas");
@@ -98,70 +112,86 @@ function toggleSignDetection() {
 }
 
 function leaveCall() {
-  // Close all peer connections and reload the page.
   for (let id in peerConnections) {
     peerConnections[id].close();
   }
   window.location.reload();
 }
 
-// Front text box's Speak button function:
-// Convert text (from "messageBox") to speech locally and broadcast it with an isSpeech flag.
+/* --- Modified Speak Functionality (Translation/TTS) --- */
 function sendSpeech() {
   const message = document.getElementById("messageBox").value;
+  const language = document.getElementById("translationLanguage").value;
   if (message.trim().length > 0) {
-    // Convert text to speech locally.
-    speakMessage(message);
-    // Broadcast the message so that the other device receives it and it appears in the chat history.
-    socket.emit("chat", { message: message, name: window.userName, isSpeech: true });
+    // Send text to the translation endpoint
+    fetch("http://localhost:5000/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: message, language: language })
+    })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`Server error: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data.error) {
+          alert("Error: " + data.error);
+          return;
+        }
+        // Update the text box with the translated text.
+        document.getElementById("messageBox").value = data.translated_text;
+        // Emit the chat message along with the audio URL.
+        socket.emit("chat", {
+          message: data.translated_text,
+          name: window.userName,
+          isSpeech: true,
+          audio_url: data.audio_url
+        });
+        // Play the generated audio locally.
+        let audio = new Audio(data.audio_url);
+        audio.play().catch(err => console.error("Audio play error:", err));
+      })
+      .catch(error => {
+        console.error("Error in translation:", error);
+        alert("Something went wrong: " + error.message);
+      });
   }
 }
 
-// Clear the front text box.
 function clearMessage() {
   document.getElementById("messageBox").value = "";
 }
 
-// Use the Web Speech API to speak a message.
 function speakMessage(message) {
   const utterance = new SpeechSynthesisUtterance(message);
   window.speechSynthesis.speak(utterance);
 }
 window.speakMessage = speakMessage;
 
-/* ===== Chat Box Functionality ===== */
-
-// Toggle (show/hide) the chat box.
+/* ----- Chat Box Functions ----- */
 function toggleChatBox() {
   const chatBox = document.getElementById("chatBox");
-  // Use "flex" to preserve the flex layout.
   chatBox.style.display = (chatBox.style.display === "none" || chatBox.style.display === "") ? "flex" : "none";
 }
 
-// Create and insert the chat box into the DOM.
 function createChatBox() {
   const chatBox = document.createElement("div");
   chatBox.id = "chatBox";
   chatBox.className = "chat-box";
-  
-  // Fixed-size rectangular card with flex layout.
   chatBox.style.position = "fixed";
   chatBox.style.right = "20px";
   chatBox.style.bottom = "100px";
   chatBox.style.width = "300px";
-  chatBox.style.height = "400px"; // Fixed height
+  chatBox.style.height = "400px";
   chatBox.style.background = "#1e1e1e";
   chatBox.style.border = "1px solid #333";
   chatBox.style.borderRadius = "5px";
-  chatBox.style.display = "none"; // Hidden by default.
+  chatBox.style.display = "none";
   chatBox.style.flexDirection = "column";
-  chatBox.style.overflow = "hidden"; // Ensure inner content does not break the fixed size.
+  chatBox.style.overflow = "hidden";
   chatBox.style.zIndex = "1000";
-  
-  // Inner HTML structure:
-  // - A header with a close button.
-  // - A messages container that is scrollable.
-  // - A chat input area with an input field, a voice icon button, and a send button.
   chatBox.innerHTML = `
     <div class="chat-header" style="background: #333; padding: 10px; color: #fff; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444;">
       <span>Chat</span>
@@ -175,13 +205,9 @@ function createChatBox() {
     </div>
   `;
   document.body.appendChild(chatBox);
-
-  // Close chat box when X is clicked.
   document.getElementById("closeChat").addEventListener("click", function () {
     chatBox.style.display = "none";
   });
-
-  // Add event listeners for chat send and voice button.
   document.getElementById("sendChat").addEventListener("click", sendChatMessage);
   document.getElementById("chatInput").addEventListener("keyup", function (e) {
     if (e.key === "Enter") {
@@ -191,7 +217,6 @@ function createChatBox() {
   document.getElementById("voiceChatButton").addEventListener("click", toggleChatVoice);
 }
 
-// Toggle voice recognition for the chat input.
 function toggleChatVoice() {
   if (!recognition) {
     alert("Speech recognition is not supported in this browser.");
@@ -201,8 +226,7 @@ function toggleChatVoice() {
   if (!isRecognizing) {
     recognition.start();
     isRecognizing = true;
-    // Change the icon to indicate that voice recognition is active.
-    voiceBtn.textContent = "🛑"; // Press again to stop.
+    voiceBtn.textContent = "🛑";
   } else {
     recognition.stop();
     isRecognizing = false;
@@ -210,7 +234,6 @@ function toggleChatVoice() {
   }
 }
 
-// Send a chat message from the chat box.
 function sendChatMessage() {
   const chatInput = document.getElementById("chatInput");
   const message = chatInput.value.trim();
@@ -223,7 +246,6 @@ function sendChatMessage() {
   chatInput.value = "";
 }
 
-// Append a chat message to the chat messages container.
 function appendChatMessage(data) {
   const chatBox = document.getElementById("chatBox");
   if (!chatBox) return;
@@ -232,7 +254,5 @@ function appendChatMessage(data) {
   messageElem.className = "chat-message";
   messageElem.textContent = data.name + ": " + data.message;
   messagesContainer.appendChild(messageElem);
-  // Auto-scroll to the bottom so the latest message is visible.
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
-

@@ -1,7 +1,7 @@
 // videoCall.js
 
 const socket = io();
-window.socket = socket; // Expose the socket globally for use in controls.js
+window.socket = socket; // Expose socket globally
 
 let localStream;
 let peerConnections = {};
@@ -10,44 +10,36 @@ let detectASL = false;
 
 function startVideoCall(name) {
   userName = name;
-  window.userName = name; // Make the user name available globally
+  window.userName = name;
   document.getElementById("app").innerHTML = `
     <div id="videoContainer" class="video-grid"></div>
     <div id="controls" class="control-bar"></div>
   `;
-
+  
   initializeVideoGrid();
   initializeControls();
-
-  // Get local media and add your own video to the grid.
-  navigator.mediaDevices
-    .getUserMedia({ video: true, audio: true })
+  
+  navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     .then((stream) => {
       localStream = stream;
       addVideoStream(userName, localStream, true, "local");
-      // Tell the server about our new user.
       socket.emit("new-user", { name: userName });
     })
     .catch((err) => console.error("Error accessing media devices:", err));
-
-  // When receiving an updated user list, initiate calls only to those with a greater socket ID.
+  
   socket.on("users", (users) => {
     users.forEach((user) => {
       if (user.id !== socket.id && !peerConnections[user.id]) {
-        // Only initiate the call if my socket id is lexicographically lower than theirs.
+        // Initiate call only if our socket id is lexicographically lower.
         if (socket.id < user.id) {
           initiateCall(user.id, user.name);
         }
       }
     });
   });
-
-  // When receiving an offer from a remote peer.
+  
   socket.on("offer", async (data) => {
-    if (peerConnections[data.from]) {
-      console.warn("Already connected with", data.from);
-      return;
-    }
+    if (peerConnections[data.from]) return;
     const pc = createPeerConnection(data.from, data.name);
     try {
       await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
@@ -55,37 +47,26 @@ function startVideoCall(name) {
       await pc.setLocalDescription(answer);
       socket.emit("answer", { target: data.from, answer, name: userName });
     } catch (e) {
-      console.error("Error handling offer from", data.from, ":", e);
+      console.error("Error handling offer:", e);
     }
   });
-
-  // When receiving an answer for an offer we sent.
+  
   socket.on("answer", (data) => {
     const pc = peerConnections[data.from];
-    if (pc) {
-      if (pc.signalingState === "have-local-offer") {
-        pc
-          .setRemoteDescription(new RTCSessionDescription(data.answer))
-          .catch((err) =>
-            console.error("Error setting remote description in answer:", err)
-          );
-      } else {
-        console.warn("Received answer but signaling state is:", pc.signalingState);
-      }
+    if (pc && pc.signalingState === "have-local-offer") {
+      pc.setRemoteDescription(new RTCSessionDescription(data.answer))
+        .catch((err) => console.error("Error setting remote description:", err));
     }
   });
-
-  // When receiving ICE candidates.
+  
   socket.on("candidate", (data) => {
     const pc = peerConnections[data.from];
     if (pc) {
-      pc
-        .addIceCandidate(new RTCIceCandidate(data.candidate))
-        .catch((err) => console.error("Error adding received ICE candidate", err));
+      pc.addIceCandidate(new RTCIceCandidate(data.candidate))
+        .catch((err) => console.error("Error adding ICE candidate:", err));
     }
   });
-
-  // When a user disconnects, remove its video and close its connection.
+  
   socket.on("user-disconnected", (id) => {
     if (peerConnections[id]) {
       peerConnections[id].close();
@@ -93,12 +74,14 @@ function startVideoCall(name) {
       removeVideoStream(id);
     }
   });
-
-  // Updated Chat Message Listener:
-  // Append incoming chat messages and, if the message was sent via the Speech button, also speak it.
+  
   socket.on("chat", (data) => {
     appendChatMessage(data);
-    if (data.isSpeech) {
+    // If a chat message is flagged as speech and includes an audio URL, play it.
+    if (data.isSpeech && data.audio_url) {
+      let audio = new Audio(data.audio_url);
+      audio.play().catch(err => console.error("Audio play error:", err));
+    } else if (data.isSpeech) {
       speakMessage(data.message);
     }
   });
@@ -115,21 +98,17 @@ function initiateCall(targetId, targetName) {
 }
 
 function createPeerConnection(targetId, targetName) {
-  const pc = new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-  });
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
   peerConnections[targetId] = pc;
-
-  // Add local stream tracks.
+  
   localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
-
+  
   pc.onicecandidate = (event) => {
     if (event.candidate) {
       socket.emit("candidate", { target: targetId, candidate: event.candidate });
     }
   };
-
-  // ontrack handler: ensure we get a proper remote MediaStream.
+  
   pc.ontrack = (event) => {
     let remoteStream;
     if (event.streams && event.streams[0]) {
@@ -140,7 +119,7 @@ function createPeerConnection(targetId, targetName) {
     }
     addVideoStream(targetName, remoteStream, false, targetId);
   };
-
+  
   return pc;
 }
 
@@ -159,9 +138,56 @@ function removeVideoStream(id) {
   }
 }
 
-// --- ASL detection processing ---
-// This function captures frames from the local video element, sends them to the ASL detection server,
-// overlays detection results on the local video, and appends detected letters to the front text box.
+function initializeVideoGrid() {
+  updateVideoLayout();
+}
+
+function addVideoStream(name, stream, isLocal = false, id = "local") {
+  let existing = document.querySelector(`.video-wrapper[data-id="${id}"]`);
+  if (existing) {
+    const video = existing.querySelector("video");
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
+      video.play().catch((err) => console.error("Error playing video:", err));
+    }
+    const label = existing.querySelector(".video-label");
+    label.textContent = name;
+    return;
+  }
+  
+  const videoWrapper = document.createElement("div");
+  videoWrapper.className = "video-wrapper";
+  videoWrapper.dataset.id = id;
+  
+  const videoElem = document.createElement("video");
+  videoElem.autoplay = true;
+  videoElem.playsInline = true;
+  videoElem.srcObject = stream;
+  if (isLocal) videoElem.muted = true;
+  videoWrapper.appendChild(videoElem);
+  
+  const nameLabel = document.createElement("div");
+  nameLabel.className = "video-label";
+  nameLabel.textContent = name;
+  videoWrapper.appendChild(nameLabel);
+  
+  document.getElementById("videoContainer").appendChild(videoWrapper);
+  updateVideoLayout();
+}
+
+function updateVideoLayout() {
+  const container = document.getElementById("videoContainer");
+  const count = container.children.length;
+  if (count === 1) {
+    container.style.gridTemplateColumns = "1fr";
+  } else if (count === 2) {
+    container.style.gridTemplateColumns = "1fr 1fr";
+  } else if (count > 2) {
+    container.style.gridTemplateColumns = "repeat(auto-fit, minmax(300px, 1fr))";
+  }
+}
+
+/* --- Sign Detection (ASL) --- */
 function processASL() {
   if (!detectASL) return;
   const localWrapper = document.querySelector(`.video-wrapper[data-id="local"]`);
@@ -205,7 +231,7 @@ function processASL() {
           context.font = "16px Arial";
           context.fillText(`${det.label} (${det.confidence.toFixed(2)})`, det.x1, det.y1 - 5);
         });
-        // Append the first detected letter to the front text box (if not already present at the end)
+        // Append the first detected letter to the message box if not already there.
         if (detections.length > 0) {
           let letter = detections[0].label;
           const messageBox = document.getElementById("messageBox");
@@ -221,8 +247,4 @@ function processASL() {
   });
   setTimeout(processASL, 300);
 }
-
-// Expose processASL globally so that controls.js can access it.
 window.processASL = processASL;
-
-

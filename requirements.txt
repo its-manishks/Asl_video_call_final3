@@ -3,5 +3,4 @@ flask-cors
 opencv-python-headless  # Replaces opencv-python to avoid GUI dependencies
 numpy
 ultralytics
-gunicorn  # Required to serve the app on Azure
 
