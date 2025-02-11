@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from googletrans import Translator
 from gtts import gTTS
@@ -21,11 +21,15 @@ model = YOLO("best.pt")
 # Initialize translator for TTS translation
 translator = Translator()
 
+# 🏠 Home route to confirm the server is running
+@app.route('/')
+def home():
+    return "Flask backend is running! 🚀", 200
+
 @app.route('/detect', methods=['POST'])
 def detect():
     try:
         file = request.files['frame']
-        # Read file once and log its size
         file_bytes = file.read()
         logging.debug(f"Received frame of size: {len(file_bytes)} bytes")
         file.seek(0)
@@ -56,7 +60,6 @@ def detect():
 
 @app.route('/translate', methods=['POST', 'OPTIONS'])
 def translate_text():
-    # Handle CORS preflight requests
     if request.method == 'OPTIONS':
         return jsonify({}), 200
     try:
@@ -66,7 +69,6 @@ def translate_text():
         if not text or not target_language:
             return jsonify({"error": "Missing text or language"}), 400
 
-        # Translate the text using googletrans
         translated = translator.translate(text, dest=target_language)
 
         # Generate audio in memory without saving to disk
@@ -77,7 +79,6 @@ def translate_text():
         b64_audio = base64.b64encode(fp.read()).decode('utf-8')
         data_url = "data:audio/mp3;base64," + b64_audio
 
-        # Return the translated text and the data URL containing the audio
         return jsonify({
             "translated_text": translated.text,
             "audio_url": data_url
