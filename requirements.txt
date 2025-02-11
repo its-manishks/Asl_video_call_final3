@@ -1,6 +1,7 @@
 Flask
 flask-cors
-opencv-python-headless  # For headless image processing
+opencv-python-headless==4.8.0.74
+ # For headless image processing
 numpy
 ultralytics
 googletrans==4.0.0-rc1  # Recommended version for compatibility
