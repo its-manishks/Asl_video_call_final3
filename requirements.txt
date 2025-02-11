@@ -3,6 +3,8 @@ flask-cors
 opencv-python-headless  # For headless image processing
 numpy
 ultralytics
-googletrans==4.0.0-rc1   # Recommended version for compatibility
+googletrans==4.0.0-rc1  # Recommended version for compatibility
 gTTS
+gunicorn  # Required for running Flask on Render
+
 
